@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+costs.jsonl
+.cache/
+evals/results/
+node_modules/
+frontend/dist/
