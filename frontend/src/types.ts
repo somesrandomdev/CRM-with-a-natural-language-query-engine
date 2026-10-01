@@ -69,6 +69,7 @@ export interface QueryResponse {
   explanation_source: "llm" | "fallback";
   elapsed_ms: number;
   cost_usd: number;
+  cached: boolean;
 }
 
 export interface FieldChange {

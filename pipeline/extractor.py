@@ -9,6 +9,7 @@ from app.models import NoteSource, Sentiment
 from llm import LLMClient, LLMRequest, ToolSpec
 from llm.client import HAIKU
 from llm.prompts import Prompt, load_prompt
+from llm.types import RawCompletion
 
 PROMPT_PATH = Path(__file__).parent / "prompt.md"
 MAX_OBJECTION_CHARS = 200
@@ -46,6 +47,14 @@ TOOL = ToolSpec(
 )
 
 
+def _is_valid(raw: RawCompletion) -> bool:
+    try:
+        Extraction.model_validate(raw.tool_input or {})
+    except ValidationError:
+        return False
+    return True
+
+
 class ExtractionError(Exception):
     """The model's output could not be turned into a valid `Extraction`."""
 
@@ -74,7 +83,8 @@ class NoteExtractor:
                 max_tokens=512,
                 prompt_version=self._prompt.version,
                 tool=TOOL,
-            )
+            ),
+            cacheable=_is_valid,
         )
         try:
             extraction = Extraction.model_validate(result.tool_input or {})

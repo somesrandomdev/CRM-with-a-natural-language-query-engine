@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import get_sessionmaker
 from app.models import IngestDeadLetter, IngestJob, IngestProposal, JobStatus, ProposalStatus
-from llm import LLMError, get_llm_client
+from llm import BudgetExceededError, LLMError, get_llm_client
 from pipeline.extractor import NoteExtractor
 
 log = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ LEASE_SECONDS = 120
 BACKOFF_BASE_SECONDS = 5
 BACKOFF_MAX_SECONDS = 300
 MAX_ERROR_CHARS = 2000
+BUDGET_RETRY_SECONDS = 900
 
 
 def _now() -> datetime:
@@ -109,8 +110,11 @@ def process_one(
     # The LLM call happens with no transaction or row lock held.
     error: str | None = None
     outcome = None
+    out_of_budget = False
     try:
         outcome = extractor_factory().extract(text, source)
+    except BudgetExceededError as exc:
+        out_of_budget, error = True, str(exc)
     except Exception as exc:  # any failure is retried, then dead-lettered
         error = f"{type(exc).__name__}: {exc}"
 
@@ -133,6 +137,13 @@ def process_one(
             job.status = JobStatus.succeeded
             job.locked_at = None
             job.last_error = None
+        elif out_of_budget:
+            # Not the note's fault: put it back without using up a retry, and look again later.
+            job.status = JobStatus.pending
+            job.attempts = max(job.attempts - 1, 0)
+            job.locked_at = None
+            job.last_error = error
+            job.next_attempt_at = now_fn() + timedelta(seconds=BUDGET_RETRY_SECONDS)
         else:
             _record_failure(session, job, error or "unknown error", now_fn())
         session.commit()

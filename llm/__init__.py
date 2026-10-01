@@ -12,9 +12,11 @@ from llm.client import (
     Usage,
     get_llm_client,
 )
+from llm.costlog import BudgetExceededError
 
 __all__ = [
     "ALLOWED_MODELS",
+    "BudgetExceededError",
     "LLMBackend",
     "LLMClient",
     "LLMError",

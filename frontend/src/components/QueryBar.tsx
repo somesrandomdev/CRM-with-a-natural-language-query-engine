@@ -105,6 +105,7 @@ function ErrorCard({ error, onDismiss }: { error: ApiError; onDismiss: () => voi
     unanswerable: "That doesn't look like something the CRM data can answer.",
     invalid_ir: "I couldn't turn that into a valid query. Try rephrasing with the names of fields or stages.",
     timeout: "That query was too slow and was cancelled after 5 seconds.",
+    budget_exceeded: "The daily AI budget has been used up. Try again tomorrow.",
   };
   return (
     <div className="card result error-card" role="alert">
@@ -143,6 +144,7 @@ function Result({ result, onDismiss }: { result: QueryResponse; onDismiss: () =>
       <div className="meta">
         {result.row_count} row{result.row_count === 1 ? "" : "s"}
         {result.truncated && " (limited to the first 100)"} · {Math.round(result.elapsed_ms)} ms · cost {formatCost(result.cost_usd)}
+        {result.cached && " (cached)"}
       </div>
       <details className="sql">
         <summary>Show generated SQL</summary>

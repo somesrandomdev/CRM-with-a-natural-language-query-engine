@@ -23,4 +23,5 @@ class QueryResponse(BaseModel):
     explanation: str
     explanation_source: Literal["llm", "fallback"]
     elapsed_ms: float
-    cost_usd: float
+    cost_usd: float  # actual spend for this request; 0 when served entirely from cache
+    cached: bool

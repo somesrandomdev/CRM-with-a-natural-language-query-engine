@@ -185,3 +185,17 @@ def test_dead_job_requeue_flow(db: Session, factory: sessionmaker[Session]) -> N
     db.commit()
     process_one(factory, extractor_of(LLMError("down")), lambda: NOW)
     assert job_state(db, job).status is JobStatus.dead
+
+
+def test_exhausted_daily_budget_requeues_without_burning_an_attempt(
+    db: Session, factory: sessionmaker[Session]
+) -> None:
+    from llm import BudgetExceededError
+
+    job = IngestJobFactory(next_attempt_at=NOW - timedelta(seconds=1))
+    db.commit()
+    assert process_one(factory, extractor_of(BudgetExceededError("cap reached")), lambda: NOW)
+    state = job_state(db, job)
+    assert (state.status, state.attempts) == (JobStatus.pending, 0)
+    assert state.next_attempt_at > NOW + timedelta(minutes=10)
+    assert db.scalar(select(IngestDeadLetter).where(IngestDeadLetter.job_id == job.id)) is None

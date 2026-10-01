@@ -145,3 +145,27 @@ make web-test                     # unit tests + type-checked production build
 
 The JWT is kept in `localStorage` for simplicity; a production deployment would prefer an
 httpOnly cookie.
+
+## Cost controls (`llm/`)
+
+Every model call in the codebase goes through one wrapper, `llm.LLMClient`. Four hard rules, each
+covered by tests:
+
+1. **One door.** Only `llm/client.py` imports the Anthropic SDK (a test scans the source tree).
+2. **No Opus.** Models must be on an allow-list (`claude-sonnet-4-6`, `claude-haiku-4-5`), and any
+   model id containing "opus" is refused even if someone adds it to the list. Refusal happens before
+   the cache, the budget check, or the network. A test also fails if an Opus id appears anywhere in
+   the source.
+3. **Every call is logged** to `costs.jsonl` as `{ts, task, model, input_tokens, output_tokens, usd,
+   cached, saved_usd, prompt_version}`. Prompts and responses are never written. Set
+   `LLM_DAILY_BUDGET_USD` for a hard daily cap (calls then fail with `429 budget_exceeded`; queued
+   ingest jobs wait instead of burning retries).
+4. **Responses are cached** under `sha256(schema_hash, prompt_version, input)` (input = task, model
+   and user message). A schema change or prompt-version bump misses automatically; row counts are
+   deliberately not part of the schema hash. Invalid answers (an IR that fails validation, an
+   extraction that fails parsing, a rationale that cites invented numbers) are never cached, so a bad
+   answer is regenerated rather than replayed. Cache hits are free and logged as such.
+
+`POST /query` returns `cost_usd` (actual spend for that request, `0` when fully cached) and
+`cached` on every response, including errors. `tests/test_prompt_lock.py` fails if a prompt is
+edited without a version bump, which is what keeps the cache key honest.

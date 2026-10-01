@@ -44,7 +44,7 @@ class CompileResult:
     unanswerable_reason: str | None
     usd: float
     attempts: int
-    cached: bool = False
+    cached: bool = False  # every model call behind this result was served from the cache
     history: list[list[str]] = field(default_factory=list)  # errors from rejected attempts
 
 
@@ -73,6 +73,7 @@ class QueryCompiler:
         system = self._prompt.render(schema=catalog.render_for_prompt())
         user = question
         total_usd = 0.0
+        all_cached = True
         history: list[list[str]] = []
         for attempt in range(1, self._max_repairs + 2):
             result = self._llm.complete(
@@ -85,13 +86,21 @@ class QueryCompiler:
                     prompt_version=self._prompt.version,
                     schema_hash=catalog.schema_hash,
                     tool=TOOL,
-                )
+                ),
+                # Only valid IRs are cached: a rejected answer must be regenerated, not replayed.
+                cacheable=lambda raw: not self._validate(raw.tool_input or {}, catalog)[0],
             )
             total_usd += result.usd
+            all_cached &= result.cached
             errors, output = self._validate(result.tool_input or {}, catalog)
             if not errors and output is not None:
                 return CompileResult(
-                    output.ir, output.unanswerable_reason, total_usd, attempt, history=history
+                    output.ir,
+                    output.unanswerable_reason,
+                    total_usd,
+                    attempt,
+                    cached=all_cached,
+                    history=history,
                 )
             history.append(errors)
             user = _repair_message(question, result.tool_input, errors)

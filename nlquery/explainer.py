@@ -23,6 +23,7 @@ class Explanation:
     text: str
     source: Literal["llm", "fallback"]
     usd: float = 0.0
+    cached: bool = False
 
 
 def _trim(value: object) -> object:
@@ -60,14 +61,22 @@ def explain(
                 max_tokens=300,
                 prompt_version=prompt.version,
                 schema_hash=schema_hash,
-            )
+            ),
+            cacheable=lambda raw: _usable(raw.text),
         )
     except LLMError:
         return Explanation(describe(ir, len(rows), truncated), "fallback")
     text = " ".join((result.text or "").split())
-    if not text or len(text) > MAX_EXPLANATION_CHARS:
-        return Explanation(describe(ir, len(rows), truncated), "fallback", result.usd)
-    return Explanation(text, "llm", result.usd)
+    if not _usable(text):
+        return Explanation(
+            describe(ir, len(rows), truncated), "fallback", result.usd, result.cached
+        )
+    return Explanation(text, "llm", result.usd, result.cached)
+
+
+def _usable(text: str | None) -> bool:
+    cleaned = " ".join((text or "").split())
+    return bool(cleaned) and len(cleaned) <= MAX_EXPLANATION_CHARS
 
 
 # ---------------------------------------------------------------- deterministic fallback

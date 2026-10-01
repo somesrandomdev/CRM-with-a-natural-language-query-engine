@@ -5,7 +5,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.models import Role, User
-from llm import LLMClient, LLMError
+from llm import BudgetExceededError, LLMClient, LLMError
 from nlquery.builder import RowScope, build_sql
 from nlquery.catalog import Catalog, load_catalog
 from nlquery.compiler import CompileError, QueryCompiler
@@ -51,6 +51,10 @@ def run_nl_query(session: Session, llm: LLMClient, user: User, question: str) ->
             "Could not turn that question into a valid query. Try rephrasing it.",
             422, exc.usd, exc.errors,
         ) from exc  # fmt: skip
+    except BudgetExceededError as exc:
+        raise QueryPipelineError(
+            "budget_exceeded", "The daily AI budget is used up.", 429, 0.0
+        ) from exc
     except LLMError as exc:
         log.warning("LLM failure during compile: %s", exc)
         raise QueryPipelineError(
@@ -112,6 +116,7 @@ def run_nl_query(session: Session, llm: LLMClient, user: User, question: str) ->
         row_count=len(result.rows),
         truncated=truncated,
         chart_hint=ir.chart_hint,
+        cached=compiled.cached and explanation.cached,
         explanation=explanation.text,
         explanation_source=explanation.source,
         elapsed_ms=result.elapsed_ms,

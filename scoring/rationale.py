@@ -91,11 +91,21 @@ def explain_score(
                 user="<data>\n" + json.dumps(_payload(result), sort_keys=True) + "\n</data>",
                 max_tokens=200,
                 prompt_version=prompt.version,
-            )
+            ),
+            cacheable=lambda raw: _acceptable(raw.text, result),
         )
     except LLMError:
         return Rationale(fallback_rationale(result), "fallback")
     text = " ".join((completion.text or "").split())
-    if not text or len(text) > MAX_RATIONALE_CHARS or not cites_only_known_numbers(text, result):
+    if not _acceptable(text, result):
         return Rationale(fallback_rationale(result), "fallback", completion.usd)
     return Rationale(text, "llm", completion.usd)
+
+
+def _acceptable(text: str | None, result: ScoreResult) -> bool:
+    cleaned = " ".join((text or "").split())
+    return (
+        bool(cleaned)
+        and len(cleaned) <= MAX_RATIONALE_CHARS
+        and cites_only_known_numbers(cleaned, result)
+    )

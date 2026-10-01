@@ -18,6 +18,13 @@ class Settings(BaseSettings):
 
     anthropic_api_key: SecretStr | None = None
     llm_backend: Literal["anthropic", "replay"] = "anthropic"
+    # Budget controls (see llm/client.py): every call is logged, identical requests are cached, and
+    # an optional daily USD cap stops further calls.
+    llm_cost_log: Path = Path("costs.jsonl")
+    llm_cache_enabled: bool = True
+    llm_cache_dir: Path = Path(".cache/llm")
+    llm_daily_budget_usd: float | None = None
+
     # JSONL of golden cases the "replay" backend answers from (CI / offline demos only).
     llm_replay_file: Path = Path("evals/query_golden.jsonl")
 
