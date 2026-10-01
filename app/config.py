@@ -1,6 +1,7 @@
 """Application settings, loaded from the environment (and `.env` in development)."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr
@@ -17,6 +18,8 @@ class Settings(BaseSettings):
 
     anthropic_api_key: SecretStr | None = None
     llm_backend: Literal["anthropic", "replay"] = "anthropic"
+    # JSONL of golden cases the "replay" backend answers from (CI / offline demos only).
+    llm_replay_file: Path = Path("evals/query_golden.jsonl")
 
     cors_origins: list[str] = ["http://localhost:5173"]
 

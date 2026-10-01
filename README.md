@@ -5,7 +5,7 @@ questions into validated, read-only SQL. The LLM is a query-compiler frontend, n
 it only ever produces a typed intermediate representation (IR); all SQL is generated and checked
 by deterministic code.
 
-> Status: milestone 1 (backend skeleton). See the commit history for the build order.
+> Build order is visible in the commit history; each milestone is one commit.
 
 ## Quick start
 
@@ -38,3 +38,49 @@ never trusted from the token.
 `make test` runs against a real PostgreSQL (`TEST_DATABASE_URL`, default
 `clearpipe_test` on localhost). The schema is built by running the actual Alembic migrations, and a
 test asserts the ORM models and migrations have not drifted.
+
+## The query compiler (`nlquery/`)
+
+`POST /query {"question": "..."}` compiles English into a validated, read-only SQL query:
+
+```
+question ──► compiler.py ──► QueryIR ──► check_ir ──► builder.py ──► validator.py ──► executor.py ──► explainer.py
+             (LLM, forced   (typed,     (vs. live    (sqlglot AST,  (AST walk,       (savepoint,     (LLM, 1-2
+              tool call)     no SQL)     catalog)     no strings)    allow-lists)     5s timeout,     sentences)
+                                                                                      read-only)
+```
+
+The LLM appears twice: at the IR boundary and in the final summary. Everything in between is
+ordinary, tested code.
+
+* **IR, not SQL** (`ir.py`). The model must answer through one forced tool call whose schema is
+  `QueryIR` (`tables, select, filters, joins, group_by, order_by, limit, chart_hint`). There is no
+  field that can hold SQL; unknown fields are rejected. `select` is an addition to the brief's field
+  list: without it an IR cannot express aggregates. A question the schema cannot answer comes back
+  as an `unanswerable_reason`, not a guessed query.
+* **Live schema in the prompt** (`catalog.py`, `prompt.md`). Tables, columns, enum labels, sample
+  values for low-cardinality text columns, foreign keys and row counts are introspected on every
+  request. Exposure is an explicit allow-list (`users.hashed_password` does not exist as far as the
+  compiler is concerned). The schema hash covers structure only, not row counts, so inserts do not
+  invalidate cached compilations.
+* **IR validation with repair** (`ir.check_ir`). Tables, columns, enum values, joins (must follow a
+  foreign key and form a tree), operator/type compatibility, and group-by consistency are checked
+  against the catalog. Failures are fed back to the model for one repair attempt, then the request
+  fails with the validator's messages.
+* **Deterministic builder** (`builder.py`). IR -> sqlglot AST -> SQL. Values become escaped literals
+  (LIKE wildcards escaped, hostile strings stay literals), relative dates compile to
+  `CURRENT_TIMESTAMP - INTERVAL` / `DATE_TRUNC` expressions, so cached IRs never go stale.
+  Reps are restricted to their own leads (and those leads' activities) by CTEs the builder
+  injects *after* compilation, so one cached IR serves every user.
+* **Validator** (`validator.py`). Parses the final SQL with sqlglot and enforces, on the AST:
+  exactly one statement; SELECT only, with DML/DDL rejected anywhere in the tree (including inside
+  CTEs); an allow-list of node types and functions (no `pg_sleep`, `pg_read_file`, `set_config`,
+  ...); table and column allow-lists (columns are resolved against the exposed schema, `*` is only
+  legal in `COUNT(*)`); and a literal `LIMIT`, injected as 100 when absent and clamped when larger.
+  The executed SQL is regenerated from the validated AST, with comments stripped.
+* **Executor** (`executor.py`). Runs in a savepoint with `statement_timeout = 5s` and the
+  transaction forced read-only (defense in depth: a bypassed validator still cannot write).
+* **Explainer** (`explainer.py`). One `claude-sonnet-4-6` call over the IR and a 10-row sample;
+  falls back to a deterministic description if the call fails or misbehaves.
+
+Not covered (v1): OR across different columns, HAVING, self-joins, set operations, window functions.
