@@ -119,3 +119,29 @@ tests enforce that weights sum to 100 and no rule ever overshoots its maximum. T
 (`claude-haiku-4-5`) only writes the one- or two-sentence `rationale`, and its text is discarded
 in favour of a deterministic sentence if it cites any number that is not in the score data, or if
 the call fails. The score never depends on the model.
+
+## Frontend (`frontend/`)
+
+React 18 + Vite + TypeScript, with recharts for charts.
+
+```bash
+make web-install && make web      # http://localhost:5173 (API on :8000)
+make web-test                     # unit tests + type-checked production build
+```
+
+* **Pipeline**: a kanban board with one column per stage; drag a card (or use its "move" select, for
+  keyboard users) to change stage. Updates are optimistic and roll back with a message if the API
+  refuses.
+* **Leads**: server-side search (debounced), stage filter, and pagination. Stale responses from
+  superseded searches are discarded.
+* **Query bar**: input -> loading state -> AI summary, chart, results table, row count / latency /
+  `cost_usd`, and a "show generated SQL" disclosure. The model's `chart_hint` is only a suggestion:
+  `chart.ts` falls back to the table alone when the data's shape can't support it. Refusals and
+  validation failures get a friendly message plus the validator's details.
+* **Lead drawer**: details, the deterministic score breakdown with its rationale, and a form to submit
+  a call/email note (one idempotency key per draft).
+* **Ingest**: pending proposals with a field-by-field current -> proposed diff, per-field checkboxes
+  for partial accepts, accept/reject, history tabs, and (for admins) the dead-letter queue with retry.
+
+The JWT is kept in `localStorage` for simplicity; a production deployment would prefer an
+httpOnly cookie.

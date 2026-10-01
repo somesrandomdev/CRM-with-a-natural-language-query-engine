@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 BIN := .venv/bin
 
-.PHONY: install up down migrate seed eval-seed eval eval-stub test lint fmt typecheck api
+.PHONY: web-install web web-test web-build install up down migrate seed eval-seed eval eval-stub test lint fmt typecheck api
 
 install:
 	uv venv --python 3.12 .venv
@@ -47,3 +47,12 @@ typecheck:
 
 api:
 	$(BIN)/uvicorn app.main:app --reload
+
+web-install:
+	cd frontend && npm ci
+
+web:
+	cd frontend && npm run dev
+
+web-test:
+	cd frontend && npm test && npm run build
