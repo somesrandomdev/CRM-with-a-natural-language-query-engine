@@ -259,6 +259,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--password", default=os.environ.get("EVAL_PASSWORD", "clearpipe-demo"))
     p.add_argument("--ids", nargs="*", help="only run these case ids")
     p.add_argument("--tag", help="only run cases with this tag")
+    p.add_argument(
+        "--replay-compatible",
+        action="store_true",
+        help="skip cases a replay backend cannot answer (labelled with expected_rows only)",
+    )
     p.add_argument("--min-exact", type=float, help="fail (exit 1) below this exact-match rate")
     p.add_argument(
         "--min-equivalence", type=float, help="fail (exit 1) below this equivalence rate"
@@ -275,6 +280,14 @@ def main(argv: list[str] | None = None) -> int:
         c for c in golden.cases
         if (not args.ids or c.id in args.ids) and (not args.tag or args.tag in c.tags)
     ]  # fmt: skip
+    if args.replay_compatible:
+        answerable = [c for c in cases if c.expected_ir is not None or c.expect_unanswerable]
+        if len(answerable) < len(cases):
+            print(
+                f"skipping {len(cases) - len(answerable)} case(s) labelled with expected_rows only "
+                "(a replay backend can only answer cases that have an expected_ir)"
+            )
+        cases = answerable
     if not cases:
         print("no cases selected", file=sys.stderr)
         return 2

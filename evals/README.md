@@ -38,6 +38,9 @@ make eval        # real model against a running API; costs money
 same database. Options: `--ids a b`, `--tag join`, `--min-exact 0.8 --min-equivalence 0.9`
 (non-zero exit below the thresholds). Results are written to `evals/results/` (git-ignored).
 
+Cases labelled only with `expected_rows` are skipped in the stubbed run (there is no IR to replay);
+they are scored by `make eval`.
+
 **What the stubbed run proves, and what it does not.** In `eval-stub` mode the API runs with
 `LLM_BACKEND=replay`, which answers each question with that case's own `expected_ir`. Exact match is
 therefore 100% by construction. The run exercises everything *after* the model: IR checks, builder,

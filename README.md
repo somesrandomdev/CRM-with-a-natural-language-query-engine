@@ -169,3 +169,16 @@ covered by tests:
 `POST /query` returns `cost_usd` (actual spend for that request, `0` when fully cached) and
 `cached` on every response, including errors. `tests/test_prompt_lock.py` fails if a prompt is
 edited without a version bump, which is what keeps the cache key honest.
+
+## CI (`.github/workflows/ci.yml`)
+
+On every push and pull request: ruff (lint + format), mypy, migrations (apply, `alembic check`
+against the models, downgrade, re-apply), `pytest` against a Postgres 16 service, the **stubbed**
+golden eval, the frontend type-check/tests/build, and a `docker build` + `docker compose config`.
+No API key exists in CI: unit tests use fake backends, and the eval runs the API in
+`LLM_BACKEND=replay` mode (see `evals/README.md` for what that does and does not prove).
+
+The compiler eval against the real model never runs automatically. Trigger it from the Actions tab
+(*Run workflow* -> `live_eval`) with `ANTHROPIC_API_KEY` stored as a secret in the `live-eval`
+environment; it enforces the minimum exact-match / equivalence rates you give it and uploads
+`evals/results/` and `costs.jsonl` as artifacts.

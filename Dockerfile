@@ -3,12 +3,10 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /srv
 
+# Install only the declared runtime dependencies first, so source edits don't bust the layer cache.
 COPY pyproject.toml ./
-# Install dependencies first so source edits don't bust the layer cache.
-RUN mkdir -p app nlquery pipeline scoring llm seed evals \
-    && for d in app nlquery pipeline scoring llm seed evals; do touch $d/__init__.py; done \
-    && pip install --no-cache-dir -e . \
-    && rm -rf app/__init__.py
+RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > /tmp/requirements.txt \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY . .
 RUN useradd --create-home clearpipe && chown -R clearpipe /srv

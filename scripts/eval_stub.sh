@@ -17,4 +17,5 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 
-API_URL="http://localhost:$PORT" "$PY" -m evals.eval_queries --min-exact 1.0 --min-equivalence 1.0 "$@"
+API_URL="http://localhost:$PORT" "$PY" -m evals.eval_queries --replay-compatible \
+  --min-exact 1.0 --min-equivalence 1.0 "$@"

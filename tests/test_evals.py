@@ -329,3 +329,32 @@ def test_summary_rates_and_report(api: TestClient, backend: ScriptedBackend, db:
 
 def test_summary_of_empty_and_all_invalid() -> None:
     assert summarize([]).exact_rate is None
+
+
+def test_replay_compatible_flag_skips_rows_only_cases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from evals import eval_queries
+
+    path = tmp_path / "g.jsonl"
+    cases = [
+        {"id": "a", "question": "q a", "expected_ir": leads_by_stage()},
+        {"id": "b", "question": "q b", "expected_rows": [[1]]},
+        {"id": "c", "question": "q c", "expect_unanswerable": True},
+    ]
+    path.write_text("\n".join(json.dumps(c) for c in cases))
+    seen: list[str] = []
+
+    def fake_run(selected: list[GoldenCase], *_: object) -> list[object]:
+        seen.extend(c.id for c in selected)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(eval_queries, "run_eval", fake_run)
+    monkeypatch.setattr(eval_queries, "login", lambda *_: None)
+    monkeypatch.setattr(
+        eval_queries, "ExpectedRows", lambda: type("E", (), {"close": lambda s: None})()
+    )
+    with pytest.raises(SystemExit):
+        eval_queries.main(["--golden", str(path), "--replay-compatible", "--no-save"])
+    assert seen == ["a", "c"]
+    assert "skipping 1 case(s)" in capsys.readouterr().out
