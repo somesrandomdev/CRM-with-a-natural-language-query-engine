@@ -109,3 +109,13 @@ until a human reviews it.
 
 The worker runs inside the API process by default (`WORKER_ENABLED=false` to disable) or standalone:
 `python -m pipeline.worker`.
+
+## Lead scoring (`scoring/`)
+
+`GET /leads/{id}/score` returns `{score, breakdown, rationale}`. The **score is deterministic**:
+`scoring/rules.py` defines explicit rules (the checked-in ones are placeholders for you to replace;
+the contract is documented at the top of the file), `scoring/scoring.py` applies them, and the
+tests enforce that weights sum to 100 and no rule ever overshoots its maximum. The LLM
+(`claude-haiku-4-5`) only writes the one- or two-sentence `rationale`, and its text is discarded
+in favour of a deterministic sentence if it cites any number that is not in the score data, or if
+the call fails. The score never depends on the model.

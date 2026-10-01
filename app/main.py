@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.routers import auth, leads, query
 from pipeline import ingest
 from pipeline.worker import run_worker
+from scoring import api as scoring_api
 
 
 @asynccontextmanager
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(leads.router)
     app.include_router(query.router)
     app.include_router(ingest.router)
+    app.include_router(scoring_api.router)
 
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
