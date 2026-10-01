@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      live_eval:
+        description: "Also run the golden eval against the real model (costs money)"
+        type: boolean
+        default: false
+      min_exact:
+        description: "Minimum exact-match rate for the live eval"
+        default: "0.7"
+      min_equivalence:
+        description: "Minimum result-equivalence rate for the live eval"
+        default: "0.85"
+
+permissions:
+  contents: read
+
+env:
+  JWT_SECRET: ci-only-secret-ci-only-secret-0123456789abcdef
+  DATABASE_URL: postgresql+psycopg://clearpipe:clearpipe@localhost:5432/clearpipe
+  TEST_DATABASE_URL: postgresql+psycopg://clearpipe:clearpipe@localhost:5432/clearpipe_test
+
+jobs:
+  backend:
+    name: Backend (lint, types, tests, stubbed eval)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: clearpipe
+          POSTGRES_PASSWORD: clearpipe
+          POSTGRES_DB: clearpipe
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clearpipe"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Type-check
+        run: mypy app nlquery llm seed evals pipeline scoring
+
+      - name: Create test database
+        run: PGPASSWORD=clearpipe psql -h localhost -U clearpipe -d clearpipe -c "CREATE DATABASE clearpipe_test"
+      - name: Migrations apply, match the models, and roll back cleanly
+        run: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Tests (LLM calls are faked; no API key is available in CI)
+        run: pytest
+
+      - name: Golden eval, stubbed LLM
+        # The API runs with LLM_BACKEND=replay: the model is replaced by the labelled IRs, so this
+        # validates the pipeline downstream of the model (IR checks, builder, validator, executor,
+        # API, eval harness). It cannot measure model quality; see the manual `live-eval` job.
+        run: PY=python scripts/eval_stub.sh
+
+  frontend:
+    name: Frontend (types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  docker:
+    name: Docker (compose config, image build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker build -t clearpipe-api .
+
+  live-eval:
+    name: Golden eval against the real model (manual)
+    # Never runs on push: it spends real money. Trigger it from the Actions tab.
+    if: github.event_name == 'workflow_dispatch' && inputs.live_eval
+    runs-on: ubuntu-latest
+    environment: live-eval
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: clearpipe
+          POSTGRES_PASSWORD: clearpipe
+          POSTGRES_DB: clearpipe
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clearpipe"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: alembic upgrade head
+      - name: Seed reproducible data
+        run: python -m seed --reset --seed 42 --as-of 2026-06-30
+      - name: Run the API and the eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_BACKEND: anthropic
+          WORKER_ENABLED: "false"
+        run: |
+          python -m uvicorn app.main:app --port 8765 --log-level warning &
+          for _ in $(seq 1 50); do curl -fs localhost:8765/health >/dev/null && break; sleep 0.2; done
+          API_URL=http://localhost:8765 python -m evals.eval_queries \
+            --min-exact "${{ inputs.min_exact }}" --min-equivalence "${{ inputs.min_equivalence }}"
+      - name: Upload results and cost log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-eval-results
+          path: |
+            evals/results/
+            costs.jsonl
+          if-no-files-found: ignore

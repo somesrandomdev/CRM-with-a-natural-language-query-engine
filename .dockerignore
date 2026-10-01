@@ -1,0 +1,7 @@
+.venv
+.git
+node_modules
+frontend
+__pycache__
+.env
+costs.jsonl
