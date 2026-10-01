@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 BIN := .venv/bin
 
-.PHONY: install up down migrate seed test lint fmt typecheck api
+.PHONY: install up down migrate seed eval-seed eval eval-stub test lint fmt typecheck api
 
 install:
 	uv venv --python 3.12 .venv
@@ -19,6 +19,18 @@ migrate:
 seed:
 	$(PY) -m seed --reset
 
+# Reproducible data for labelled evals (pinned seed and 'now').
+eval-seed:
+	$(PY) -m seed --reset --seed 42 --as-of 2026-06-30
+
+# Real model, real cost. Needs the API running (with ANTHROPIC_API_KEY) on API_URL.
+eval:
+	$(PY) -m evals.eval_queries $(EVAL_ARGS)
+
+# No API key, no cost: the model is replaced by the labelled IRs. Validates everything downstream.
+eval-stub:
+	PY=$(PY) scripts/eval_stub.sh
+
 test:
 	$(BIN)/pytest
 
@@ -31,7 +43,7 @@ fmt:
 	$(BIN)/ruff format .
 
 typecheck:
-	$(BIN)/mypy app
+	$(BIN)/mypy app nlquery llm seed evals
 
 api:
 	$(BIN)/uvicorn app.main:app --reload
