@@ -10,9 +10,11 @@ import hashlib
 import pytest
 
 from nlquery.prompts import COMPILER_PROMPT_PATH, EXPLAINER_PROMPT_PATH, load_prompt
+from pipeline.extractor import PROMPT_PATH as EXTRACTOR_PROMPT_PATH
 
 LOCKED = {
     "compiler": (COMPILER_PROMPT_PATH, "1.0.0", "239c2f789077daa5"),
+    "extractor": (EXTRACTOR_PROMPT_PATH, "1.0.0", "230a72bee577b296"),
     "explainer": (EXPLAINER_PROMPT_PATH, "1.0.0", "4ffc55a351e4edc0"),
 }
 

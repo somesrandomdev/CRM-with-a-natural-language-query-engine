@@ -15,6 +15,7 @@ TEST_DATABASE_URL = os.environ.get(
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["JWT_SECRET"] = "test-secret-test-secret-test-secret-123456"
 os.environ["LLM_BACKEND"] = "replay"
+os.environ["WORKER_ENABLED"] = "false"
 os.environ.pop("ANTHROPIC_API_KEY", None)
 
 import pytest  # noqa: E402

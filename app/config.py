@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # JSONL of golden cases the "replay" backend answers from (CI / offline demos only).
     llm_replay_file: Path = Path("evals/query_golden.jsonl")
 
+    # Ingest worker: runs inside the API process, or standalone via `python -m pipeline.worker`.
+    worker_enabled: bool = True
+    worker_poll_seconds: float = 1.0
+
     cors_origins: list[str] = ["http://localhost:5173"]
 
 

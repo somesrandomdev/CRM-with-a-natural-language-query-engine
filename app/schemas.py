@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models import LeadSource, LeadStage, Role
+from app.models import LeadSource, LeadStage, Role, Sentiment
 
 
 class ORMModel(BaseModel):
@@ -51,6 +51,9 @@ class LeadOut(ORMModel):
     created_at: datetime
     last_contacted_at: datetime | None
     closed_at: datetime | None
+    timeline: str | None
+    sentiment: Sentiment | None
+    objections: list[str] | None
     company: CompanyOut
     owner_id: int
 

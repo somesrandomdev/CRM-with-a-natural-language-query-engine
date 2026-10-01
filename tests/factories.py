@@ -10,9 +10,14 @@ from app.models import (
     Activity,
     ActivityType,
     Company,
+    IngestJob,
+    IngestProposal,
+    JobStatus,
     Lead,
     LeadSource,
     LeadStage,
+    NoteSource,
+    ProposalStatus,
     Role,
     User,
 )
@@ -91,3 +96,39 @@ class ActivityFactory(BaseFactory):
     type = ActivityType.call
     subject = "Intro call"
     occurred_at = factory.LazyFunction(lambda: datetime.now(UTC) - timedelta(days=3))
+
+
+class IngestJobFactory(BaseFactory):
+    class Meta:
+        model = IngestJob
+
+    lead = factory.SubFactory(LeadFactory)
+    created_by_id = factory.SelfAttribute("lead.owner_id")
+    idempotency_key = factory.Sequence(lambda n: f"key-{n:08d}")
+    request_hash = factory.Sequence(lambda n: f"{n:064d}")
+    source = NoteSource.call
+    raw_text = "Spoke with the VP. Budget is around $50k, want to decide by end of Q3."
+    status = JobStatus.pending
+    attempts = 0
+    max_attempts = 3
+    next_attempt_at = factory.LazyFunction(lambda: datetime.now(UTC) - timedelta(minutes=1))
+
+
+class IngestProposalFactory(BaseFactory):
+    class Meta:
+        model = IngestProposal
+
+    job = factory.SubFactory(IngestJobFactory, status=JobStatus.succeeded)
+    lead = factory.SelfAttribute("job.lead")
+    extracted = factory.LazyFunction(
+        lambda: {
+            "budget_hint": 50000.0,
+            "timeline": "end of Q3",
+            "objections": ["needs SSO"],
+            "sentiment": "positive",
+        }
+    )
+    status = ProposalStatus.pending
+    model = "claude-haiku-4-5"
+    prompt_version = "1.0.0"
+    cost_usd = Decimal("0.0012")

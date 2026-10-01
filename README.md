@@ -84,3 +84,28 @@ ordinary, tested code.
   falls back to a deterministic description if the call fails or misbehaves.
 
 Not covered (v1): OR across different columns, HAVING, self-joins, set operations, window functions.
+
+## Note ingestion (`pipeline/`)
+
+`POST /ingest/note` takes raw call/email text for a lead and returns `202` immediately. A background
+worker extracts `{budget_hint, timeline, objections[], sentiment}` with `claude-haiku-4-5` (forced
+tool call, validated against a pydantic model) into a **pending proposal**; nothing touches the lead
+until a human reviews it.
+
+* **Idempotency.** `Idempotency-Key` is required. Same key + same payload returns the original job
+  (`200`); same key + different payload is a `422`. Keys are per user and enforced by a unique
+  constraint, so a concurrent duplicate loses the race cleanly.
+* **Queue.** `ingest_jobs` is the queue: `FOR UPDATE SKIP LOCKED` claims with a lease, so several
+  workers can run and a crashed worker's job is picked up again when its lease expires. The LLM call
+  holds no transaction or row lock.
+* **Retries and DLQ.** Failures (LLM errors, invalid extraction output) retry with exponential
+  backoff; after 3 attempts the job moves to `ingest_dead_letters` with the payload and error.
+  Admins can list it (`GET /ingest/dead-letters`) and requeue (`POST .../{id}/retry`). A missing API
+  key is treated as configuration, not a job failure: jobs stay queued and burn no attempts.
+* **Review.** `GET /ingest/proposals` returns each proposal with a field-by-field diff (current vs.
+  proposed). `PATCH /ingest/proposals/{id}` with `{"action": "accept" | "reject"}` applies or
+  discards it; `accept` can take a `fields` subset. Deciding is idempotent for the same action and a
+  `409` for the opposite, and accepting also logs the note as an activity on the lead.
+
+The worker runs inside the API process by default (`WORKER_ENABLED=false` to disable) or standalone:
+`python -m pipeline.worker`.
